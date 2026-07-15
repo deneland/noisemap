@@ -103,6 +103,32 @@
   </div>
 
   <div class="grp">
+    <details id="about-model">
+      <summary>How is the noise calculated?</summary>
+      <div class="doc">
+        <p>There are no microphones here — noise is <b>modelled</b> from each aircraft's
+          position, altitude and climb/descent, sampled every few seconds from its ADS-B
+          signal. For every tracked moment we estimate how loud it is at a location from:</p>
+        <p>• <b>Distance</b> — level falls off with the straight-line distance to the plane
+          (spreading + air absorption); one at 300&nbsp;m is far louder than one at 3&nbsp;km.</p>
+        <p>• <b>Departure vs arrival</b> — climbing aircraft (high thrust) are modelled
+          louder than descending ones; the phase is read from vertical speed.</p>
+        <p>• <b>Aircraft type</b> — for the common A320 family we use real certified noise
+          curves (the EASA/EUROCONTROL <b>ANP</b> noise-power-distance data); other types
+          use a generic jet model.</p>
+        <p>• <b>Off to the side</b> — planes passing to one side are quieter than ones
+          directly overhead (ground shielding), via the SAE-AIR-5662 lateral-attenuation
+          model.</p>
+        <p>These per-moment levels are energy-averaged over the whole period into Lden /
+          Lnight (with the evening/night penalties), and the loudest single pass gives Peak.</p>
+        <p style="color:#ffd479">It's a physics estimate, <b>not calibrated</b> to the real
+          noise monitors around the airport — best for <b>comparing</b> locations, not as
+          exact dB readings.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="grp">
     <details id="about-data">
       <summary>What data is this based on?</summary>
       <div class="doc">
