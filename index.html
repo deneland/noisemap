@@ -111,8 +111,10 @@
           signal. For every tracked moment we estimate how loud it is at a location from:</p>
         <p>• <b>Distance</b> — level falls off with the straight-line distance to the plane
           (spreading + air absorption); one at 300&nbsp;m is far louder than one at 3&nbsp;km.</p>
-        <p>• <b>Departure vs arrival</b> — climbing aircraft (high thrust) are modelled
-          louder than descending ones; the phase is read from vertical speed.</p>
+        <p>• <b>Engine thrust</b> — estimated from how hard the aircraft is working — its
+          rate of gaining height <i>and</i> speed — so a jet powering off the runway is
+          modelled far louder than one gliding down to land, and the noise curve is read
+          off at that thrust.</p>
         <p>• <b>Aircraft type</b> — where a measured noise-vs-distance reference curve is
           available for the model it is used; other types use a generic jet model.</p>
         <p>• <b>Off to the side</b> — planes passing to one side are quieter than ones
