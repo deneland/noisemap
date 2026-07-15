@@ -8,7 +8,9 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
 }).addTo(map);
 
 const $ = (id) => document.getElementById(id);
-const state = { variant: "all", metric: "lden" };
+const state = { variant: "all", metric: "lden", mode: "smooth" };
+const UPS = 6;                 // display upsample factor (bilinear)
+const BAND_DB = 5;             // dB step for "bands" (filled-contour) mode
 let META = null;
 const GRIDS = {};             // variant -> grid json
 let LOOKUP = null, GRID = null, overlay = null, pin = null;
@@ -59,27 +61,57 @@ function loudnessRef(v) {
 }
 
 /* ---- overlay + legend -------------------------------------------------- */
+// Both modes bilinear-upsample the coarse grid to a fine canvas (removes the
+// ~500 m blockiness). "smooth" uses the continuous ramp; "bands" quantises to
+// BAND_DB steps -> flat colours with boundaries that follow the smooth field,
+// i.e. a filled-contour look, without a marching-squares library.
 function renderOverlay() {
   if (!GRID) return;
   const { nx, ny, lat0, lon0, cell_deg } = GRID, mi = METRIC_IDX[state.metric];
-  const cvs = document.createElement("canvas"); cvs.width = nx; cvs.height = ny;
-  const ctx = cvs.getContext("2d"), img = ctx.createImageData(nx, ny);
-  for (const c of GRID.cells) {
-    const v = c[mi]; if (v == null || v <= 0) continue;
-    const [r, g, b] = noiseColor(v, state.metric);
-    const y = ny - 1 - c[0], x = c[1], p = (y * nx + x) * 4;
-    img.data[p] = r; img.data[p + 1] = g; img.data[p + 2] = b; img.data[p + 3] = 175;
+  const [lo, hi] = NOISE_RANGE[state.metric];
+  const floor = GRID.floor_db != null ? GRID.floor_db : 35;
+  const V = new Float32Array(nx * ny).fill(floor);   // value (missing -> floor)
+  const M = new Float32Array(nx * ny);               // presence mask
+  for (const c of GRID.cells) { const v = c[mi]; if (v != null) { V[c[0] * nx + c[1]] = v; M[c[0] * nx + c[1]] = 1; } }
+  const banded = state.mode === "bands";
+  const nb = Math.max(1, Math.round((hi - lo) / BAND_DB));
+  const W = nx * UPS, H = ny * UPS;
+  const cvs = document.createElement("canvas"); cvs.width = W; cvs.height = H;
+  const ctx = cvs.getContext("2d"), img = ctx.createImageData(W, H);
+  for (let py = 0; py < H; py++) {
+    const gy = (H - 1 - py) / UPS, gi0 = Math.min(Math.floor(gy), ny - 1), fy = gy - gi0, gi1 = Math.min(gi0 + 1, ny - 1);
+    for (let px = 0; px < W; px++) {
+      const gx = px / UPS, gj0 = Math.min(Math.floor(gx), nx - 1), fx = gx - gj0, gj1 = Math.min(gj0 + 1, nx - 1);
+      const w00 = (1 - fx) * (1 - fy), w01 = fx * (1 - fy), w10 = (1 - fx) * fy, w11 = fx * fy;
+      const i00 = gi0 * nx + gj0, i01 = gi0 * nx + gj1, i10 = gi1 * nx + gj0, i11 = gi1 * nx + gj1;
+      const m = M[i00] * w00 + M[i01] * w01 + M[i10] * w10 + M[i11] * w11;
+      if (m < 0.03) continue;                          // no data here -> transparent
+      const v = V[i00] * w00 + V[i01] * w01 + V[i10] * w10 + V[i11] * w11;
+      let t = Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+      if (banded) t = (Math.floor(t * nb) + 0.5) / nb;
+      const [r, g, b] = ramp(t);
+      const p = (py * W + px) * 4;
+      img.data[p] = r; img.data[p + 1] = g; img.data[p + 2] = b; img.data[p + 3] = Math.round(Math.min(1, m) * 190);
+    }
   }
   ctx.putImageData(img, 0, 0);
   const bounds = [[lat0, lon0], [lat0 + ny * cell_deg, lon0 + nx * cell_deg]];
   if (overlay) map.removeLayer(overlay);
-  overlay = L.imageOverlay(cvs.toDataURL(), bounds, { opacity: 0.72, interactive: false }).addTo(map);
+  overlay = L.imageOverlay(cvs.toDataURL(), bounds, { opacity: 0.82, interactive: false }).addTo(map);
   updateLegend();
 }
 function updateLegend() {
   const m = state.metric, [lo, hi] = NOISE_RANGE[m];
   const stops = [];
-  for (let i = 0; i <= 10; i++) stops.push(`rgb(${noiseColor(lo + (hi - lo) * i / 10, m).join(",")}) ${i * 10}%`);
+  if (state.mode === "bands") {                        // hard steps matching the map
+    const nb = Math.max(1, Math.round((hi - lo) / BAND_DB));
+    for (let i = 0; i < nb; i++) {
+      const c = `rgb(${noiseColor(lo + (i + 0.5) / nb * (hi - lo), m).join(",")})`;
+      stops.push(`${c} ${i / nb * 100}%`, `${c} ${(i + 1) / nb * 100}%`);
+    }
+  } else {
+    for (let i = 0; i <= 10; i++) stops.push(`rgb(${noiseColor(lo + (hi - lo) * i / 10, m).join(",")}) ${i * 10}%`);
+  }
   $("legend-bar").style.background = `linear-gradient(90deg,${stops.join(",")})`;
   $("legend-lbl").innerHTML = `<span>${lo}</span><span>${Math.round((lo + hi) / 2)}</span><span>${hi}+ dB</span>`;
   $("legend-ref").textContent = METRIC_REF[m];
@@ -145,6 +177,7 @@ function seg(id, key, after) {
 }
 seg("metric", "metric", renderOverlay);
 seg("variant", "variant", () => loadVariant(state.variant));
+seg("mode", "mode", renderOverlay);
 
 /* ---- boot -------------------------------------------------------------- */
 (async () => {
