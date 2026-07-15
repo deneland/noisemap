@@ -1,0 +1,1 @@
+{"airport": [50.9014, 4.4844], "bbox": [50.55, 51.25, 3.9, 5.15], "night_hours": [23, 7], "loud_threshold": 60.0, "variants": ["all", "weekday", "weekend"], "source": "adsb.lol open historical ADS-B (ODbL)", "date_from": "2026-06-15", "date_to": "2026-07-14", "samples": 4150142, "max_alt_ft": 20000}
