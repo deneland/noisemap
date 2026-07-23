@@ -43,14 +43,41 @@
   #dw-body { padding:12px 14px; }
   .dw-row { display:flex; justify-content:space-between; gap:10px; margin-top:6px; font-size:12px; }
   .dw-row .lab { color:var(--mut); }
+
+  #panel-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+  #panel-head h1 { margin:0; }
+  #panel-toggle { display:none; flex:0 0 auto; width:32px; height:32px; padding:0; line-height:1;
+                  font-size:14px; color:var(--mut); background:#0d1117; border:1px solid var(--line);
+                  border-radius:7px; cursor:pointer; transition:transform .15s ease; }
+  #panel.collapsed #panel-body { display:none; }
+  #panel.collapsed #panel-toggle { transform:rotate(180deg); }
+
+  /* Phones / narrow screens: full-width collapsible top panel + bottom-sheet drawer. */
+  @media (max-width:640px) {
+    #panel { left:8px; right:8px; top:8px; width:auto; padding:12px; max-height:calc(100% - 16px); }
+    #panel-toggle { display:block; }
+    #panel-body { max-height:46vh; overflow:auto; margin-top:8px; }
+    .seg button { padding:10px 2px; font-size:12px; }
+    details summary { padding:2px 0; }
+    #drawer { left:8px; right:8px; top:auto; bottom:8px; width:auto; max-height:62vh;
+              transform:translateY(150%); }
+    #drawer.open { transform:translateY(0); }
+    #dw-body { max-height:calc(62vh - 50px); overflow:auto; }
+  }
 </style>
 </head>
 <body>
 <div id="map"></div>
 
 <div id="panel">
-  <h1>Zaventem noise</h1>
-  <p class="sub" id="sub">modelled · uncalibrated · loading…</p>
+  <div id="panel-head">
+    <div>
+      <h1>Zaventem noise</h1>
+      <p class="sub" id="sub">modelled · uncalibrated · loading…</p>
+    </div>
+    <button id="panel-toggle" aria-label="Show or hide panel">&#9662;</button>
+  </div>
+  <div id="panel-body">
 
   <div class="grp">
     <label class="t">Metric</label>
@@ -149,7 +176,8 @@
   </div>
 
   <div class="grp">
-    <div class="hint">Click the map to read predicted noise at any location.</div>
+    <div class="hint">Tap the map to read predicted noise at any location.</div>
+  </div>
   </div>
 </div>
 

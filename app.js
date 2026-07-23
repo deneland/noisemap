@@ -1,7 +1,8 @@
 /* Static Zaventem noise map — Leaflet (no server, no WebGL). Reads precomputed
    grids from data/noise_<variant>.json and renders Lden/Lnight/peak-LAmax. */
 
-const map = L.map("map", { zoomControl: true, attributionControl: true }).setView([50.90, 4.55], 11);
+const map = L.map("map", { zoomControl: false, attributionControl: true }).setView([50.90, 4.55], 11);
+L.control.zoom({ position: "bottomright" }).addTo(map);   // keep zoom clear of the top-left panel
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
   subdomains: "abcd", maxZoom: 19,
   attribution: '&copy; OpenStreetMap &copy; CARTO',
@@ -145,6 +146,10 @@ function seg(id, key, after) {
 }
 seg("metric", "metric", renderOverlay);
 seg("variant", "variant", () => loadVariant(state.variant));
+
+/* collapse/expand the panel (mainly for phones, where it's a full-width top sheet) */
+$("panel-toggle").onclick = () => $("panel").classList.toggle("collapsed");
+if (window.matchMedia("(max-width: 640px)").matches) $("panel").classList.add("collapsed");
 
 /* ---- boot -------------------------------------------------------------- */
 (async () => {
