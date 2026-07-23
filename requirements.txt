@@ -1,0 +1,4 @@
+duckdb==1.5.4
+numpy==2.5.1
+orjson==3.11.9
+pyarrow==25.0.0

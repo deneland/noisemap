@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Zaventem noise map</title>
+<link rel="stylesheet" href="vendor/leaflet.css" />
+<style>
+  :root { --bg:#0f1419; --panel:#171d26; --line:#2a333f; --fg:#e6edf3; --mut:#93a1b0; --acc:#4aa8ff; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+              color:var(--fg); background:var(--bg); }
+  #map { position:absolute; inset:0; background:#0f1419; }
+  .leaflet-container { background:#0f1419; }
+  #panel { position:absolute; top:12px; left:12px; width:288px; max-height:calc(100% - 24px);
+           overflow:auto; z-index:1000; background:var(--panel); border:1px solid var(--line);
+           border-radius:10px; padding:14px 15px; box-shadow:0 8px 30px rgba(0,0,0,.45); }
+  details summary { cursor:pointer; font-weight:600; font-size:12px; color:var(--fg); }
+  details .doc { color:var(--mut); font-size:11px; margin-top:8px; }
+  details .doc b { color:var(--fg); font-weight:600; }
+  details .doc p { margin:7px 0; }
+  h1 { font-size:14px; margin:0 0 2px; }
+  .sub { color:var(--mut); font-size:11px; margin:0 0 12px; }
+  .grp { border-top:1px solid var(--line); padding:11px 0; }
+  .grp:first-of-type { border-top:0; padding-top:0; }
+  label.t { display:block; font-weight:600; margin-bottom:6px; font-size:12px; }
+  .seg { display:flex; gap:4px; }
+  .seg button { flex:1; padding:6px 2px; background:#0d1117; color:var(--mut); border:1px solid var(--line);
+                border-radius:6px; cursor:pointer; font-size:11px; }
+  .seg button.on { background:var(--acc); color:#062033; font-weight:700; border-color:var(--acc); }
+  .bar { height:10px; border-radius:5px; border:1px solid var(--line); margin-top:6px; }
+  .lgl { display:flex; justify-content:space-between; color:var(--mut); font-size:10px; margin-top:3px;
+         font-variant-numeric:tabular-nums; }
+  .hint { color:var(--mut); font-size:10.5px; margin-top:6px; }
+  #drawer { position:absolute; top:12px; right:12px; width:300px; z-index:1000; background:var(--panel);
+            border:1px solid var(--line); border-radius:10px; box-shadow:0 8px 30px rgba(0,0,0,.5);
+            transform:translateX(330px); transition:transform .2s ease; }
+  #drawer.open { transform:translateX(0); }
+  #drawer header { display:flex; align-items:center; justify-content:space-between; padding:12px 14px;
+                   border-bottom:1px solid var(--line); }
+  #drawer h2 { font-size:14px; margin:0; }
+  #dw-close { background:none; border:0; color:var(--mut); font-size:16px; cursor:pointer; }
+  #dw-body { padding:12px 14px; }
+  .dw-row { display:flex; justify-content:space-between; gap:10px; margin-top:6px; font-size:12px; }
+  .dw-row .lab { color:var(--mut); }
+
+  #panel-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+  #panel-head h1 { margin:0; }
+  #panel-toggle { display:none; flex:0 0 auto; width:32px; height:32px; padding:0; line-height:1;
+                  font-size:14px; color:var(--mut); background:#0d1117; border:1px solid var(--line);
+                  border-radius:7px; cursor:pointer; transition:transform .15s ease; }
+  #panel.collapsed #panel-body { display:none; }
+  #panel.collapsed #panel-toggle { transform:rotate(180deg); }
+
+  /* Phones / narrow screens: full-width collapsible top panel + bottom-sheet drawer. */
+  @media (max-width:640px) {
+    #panel { left:8px; right:8px; top:8px; width:auto; padding:12px; max-height:calc(100% - 16px); }
+    #panel-toggle { display:block; }
+    #panel-body { max-height:46vh; overflow:auto; margin-top:8px; }
+    .seg button { padding:10px 2px; font-size:12px; }
+    details summary { padding:2px 0; }
+    #drawer { left:8px; right:8px; top:auto; bottom:8px; width:auto; max-height:62vh;
+              transform:translateY(150%); }
+    #drawer.open { transform:translateY(0); }
+    #dw-body { max-height:calc(62vh - 50px); overflow:auto; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="panel">
+  <div id="panel-head">
+    <div>
+      <h1>Zaventem noise</h1>
+      <p class="sub" id="sub">modelled · uncalibrated · loading…</p>
+    </div>
+    <button id="panel-toggle" aria-label="Show or hide panel">&#9662;</button>
+  </div>
+  <div id="panel-body">
+
+  <div class="grp">
+    <label class="t">Metric</label>
+    <div class="seg" id="metric">
+      <button data-v="lden" class="on">Lden</button>
+      <button data-v="lnight">Lnight</button>
+      <button data-v="lamax">Peak</button>
+    </div>
+    <div class="hint" id="metric-hint"></div>
+  </div>
+
+  <div class="grp">
+    <label class="t">Days</label>
+    <div class="seg" id="variant">
+      <button data-v="all" class="on">All</button>
+      <button data-v="weekday">Weekday</button>
+      <button data-v="weekend">Weekend</button>
+    </div>
+  </div>
+
+  <div class="grp">
+    <div class="bar" id="legend-bar"></div>
+    <div class="lgl" id="legend-lbl"></div>
+    <div class="hint" id="legend-ref"></div>
+  </div>
+
+  <div class="grp">
+    <details id="about" open>
+      <summary>What do these numbers mean?</summary>
+      <div class="doc">
+        <p><b>Lden</b> — "day-evening-night" level: the average aircraft noise across a
+          full 24&nbsp;h, but with evening flights (19–23h) counted +5&nbsp;dB louder and
+          night flights (23–07h) +10&nbsp;dB louder, because they disturb more. It's the
+          EU's standard indicator of long-term <b>annoyance</b>. WHO guideline for
+          aircraft: below <b>45&nbsp;dB</b>.</p>
+        <p><b>Lnight</b> — the average noise during the <b>night</b> (23:00–07:00), used to
+          judge <b>sleep disturbance</b>. WHO guideline: below <b>40&nbsp;dB</b>.</p>
+        <p><b>Peak</b> — the loudest single modelled flyover at a spot (not an average):
+          how loud it gets <b>when a plane passes over</b>.</p>
+        <p>Levels are <b>A-weighted decibels (dBA)</b>. Decibels are logarithmic:
+          <b>+10&nbsp;dB ≈ twice as loud</b>, +3&nbsp;dB is just noticeable. Rough guide:
+          40 quiet library · 55 light traffic · 70 vacuum cleaner · 85 city street.</p>
+        <p>Lden/Lnight are averages over <b><span id="doc-days">the</span></b> of flight
+          data — a long-term picture, not one day.</p>
+        <p style="color:#ffd479">These are <b>modelled estimates</b> from ADS-B flight
+          tracks, <b>not yet calibrated</b> to the official noise sensors — read them as
+          indicative and comparative, not exact.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="grp">
+    <details id="about-model">
+      <summary>How is the noise calculated?</summary>
+      <div class="doc">
+        <p>There are no microphones here — noise is <b>modelled</b> from each aircraft's
+          position, altitude and climb/descent, sampled every few seconds from its ADS-B
+          signal. For every tracked moment we estimate how loud it is at a location from:</p>
+        <p>• <b>Distance</b> — level falls off with the straight-line distance to the plane
+          (spreading + air absorption); one at 300&nbsp;m is far louder than one at 3&nbsp;km.</p>
+        <p>• <b>Flight phase</b> — from its rate of climb or descent: a jet powering off
+          the runway (climbing) is modelled louder than one gliding down to land
+          (descending), which in turn differs from one cruising level overhead.</p>
+        <p>• <b>Aircraft type</b> — heavy widebodies are modelled louder, and turboprops,
+          regional jets and light aircraft quieter, as fixed adjustments to a generic
+          narrowbody-jet baseline.</p>
+        <p>• <b>Off to the side</b> — planes passing to one side are quieter than ones
+          directly overhead (ground shielding), via the SAE-AIR-5662 lateral-attenuation
+          model.</p>
+        <p>These per-moment levels are energy-averaged over the whole period into Lden /
+          Lnight (with the evening/night penalties), and the loudest single pass gives Peak.</p>
+        <p style="color:#ffd479">It's a physics estimate, <b>not calibrated</b> to the real
+          noise monitors around the airport — best for <b>comparing</b> locations, not as
+          exact dB readings.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="grp">
+    <details id="about-data">
+      <summary>What data is this based on?</summary>
+      <div class="doc">
+        <p><b>Source:</b> open historical ADS-B flight tracks from
+          <b><span id="d-source">adsb.lol</span></b> — the position and altitude signals
+          aircraft continuously broadcast, collected by community receivers (ODbL-licensed).</p>
+        <p><b>Period:</b> <b id="d-range">…</b> (<span id="d-days">…</span>).</p>
+        <p><b>Area &amp; filter:</b> a box around Brussels Airport
+          (<span id="d-bbox">…</span>), aircraft up to <span id="d-alt">…</span>&nbsp;ft;
+          on-ground movements excluded. <b id="d-samples">…</b> position samples used.</p>
+        <p><b>Caveats:</b> coverage depends on volunteer receivers, so faint gaps are
+          possible, and aircraft not broadcasting ADS-B (some military / light GA) are not
+          included. Noise is then modelled from these tracks (slant-distance + engine
+          phase), not measured.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="grp">
+    <div class="hint">Tap the map to read predicted noise at any location.</div>
+  </div>
+  </div>
+</div>
+
+<div id="drawer">
+  <header><h2>Location</h2><button id="dw-close" title="Close">&#10005;</button></header>
+  <div id="dw-body"></div>
+</div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+name: ingest
+
+# Fully serverless daily pipeline:
+#   restore accumulator (release asset) -> ingest one day -> fold into accumulator
+#   -> re-publish accumulator -> rebuild grids -> deploy to GitHub Pages.
+# The ~3 GB global download is transient on the runner; only a fixed-size
+# accumulator (~MBs) and the built site persist. Public repo => free minutes.
+#
+# One-time setup:
+#   * Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+#   * Seed the accumulator once (locally, from backfilled days), then:
+#       gh release create acc --title accumulator --notes "rolling noise accumulator"
+#       gh release upload acc data/accumulator.npz
+
+on:
+  schedule:
+    - cron: "30 6 * * *"        # daily ~06:30 UTC (after adsb.lol posts the prior day)
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Day to ingest (YYYY-MM-DD). Blank = yesterday (UTC)."
+        required: false
+
+permissions:
+  contents: write               # upload/replace the accumulator release asset
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore accumulator
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p data
+          gh release download acc --pattern accumulator.npz --dir data \
+            || echo "no existing accumulator — will start fresh"
+
+      - name: Pick the day
+        id: day
+        run: |
+          D="${{ github.event.inputs.date }}"
+          [ -z "$D" ] && D="$(date -u -d yesterday +%F)"
+          echo "date=$D" >> "$GITHUB_OUTPUT"
+
+      - name: Ingest + fold the day
+        run: |
+          python -m ingest.ingest_day "${{ steps.day.outputs.date }}"
+          python -m ingest.accumulate "data/bbox/${{ steps.day.outputs.date }}.parquet" --per-file
+
+      - name: Publish accumulator
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view acc >/dev/null 2>&1 \
+            || gh release create acc --title accumulator --notes "rolling noise accumulator"
+          gh release upload acc data/accumulator.npz --clobber
+
+      - name: Build static site
+        run: python -m ingest.build_static
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web_static
+
+      - name: Deploy to Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
